@@ -101,7 +101,8 @@ public:
   void Run(const std::vector<cv::Mat> &img_list,
            std::vector<std::string> &rec_texts,
            std::vector<float> &rec_text_scores,
-           std::vector<double> &times) noexcept;
+           std::vector<double> &times,
+           std::string& ores, float& oscore) noexcept;
 
 private:
   std::shared_ptr<paddle_infer::Predictor> predictor_;
