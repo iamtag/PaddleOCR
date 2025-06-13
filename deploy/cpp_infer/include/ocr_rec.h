@@ -61,7 +61,7 @@ public:
         if (config["Global"] && config["Global"]["model_name"]) {
           model_name = config["Global"]["model_name"].as<std::string>();
         }
-        if (!model_name.empty()) {
+        if (model_name.empty()) {
           std::cerr << "Error: " << model_name << " is currently not supported."
                     << std::endl;
           std::exit(EXIT_FAILURE);
@@ -100,7 +100,8 @@ public:
   void Run(const std::vector<cv::Mat> &img_list,
            std::vector<std::string> &rec_texts,
            std::vector<float> &rec_text_scores,
-           std::vector<double> &times) noexcept;
+           std::vector<double> &times,
+           std::string& ores, float& oscore) noexcept;
 
 private:
   std::shared_ptr<paddle_infer::Predictor> predictor_;

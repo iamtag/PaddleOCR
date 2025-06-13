@@ -19,8 +19,67 @@
 
 #include <iostream>
 #include <vector>
+#include <include/json/json.h>
 
 using namespace PaddleOCR;
+
+#include <fstream>
+#include <iomanip> // for std::setprecision
+
+#include <windows.h>
+#include <cstring>
+#include "d:/gpu/cuda/include/cuda_runtime.h"
+
+void save_result_json(const std::vector<std::vector<OCRPredictResult>>& ocr_results, const std::string& filename) {
+    std::ofstream ofs(filename);
+    if (!ofs.is_open()) {
+        std::cerr << "[ERROR] Failed to open " << filename << " for writing." << std::endl;
+        return;
+    }
+    ofs << "{\n";
+    ofs << "   \"code\" : \"0\",\n";
+    ofs << "   \"result\" : [\n";
+    bool first = true;
+    for (const auto& img_results : ocr_results) {
+        // 对每个图片的结果进行排序
+		std::vector<OCRPredictResult> ocr_result = img_results;
+        Utility::sort_boxes(ocr_result);
+
+        for (const auto& res : ocr_result) {
+			// 如果分数小于等于0.7或者识别内容为空，则跳过
+			if (res.score <= 0.7 || res.text.empty()) {
+				continue;
+			}
+            // 去掉识别内容中的"
+			std::string text = res.text;
+			text.erase(std::remove(text.begin(), text.end(), '\"'), text.end());
+
+            if (!first) ofs << ",\n";
+            first = false;
+            ofs << "      {\n";
+            // 假设 box 是4个点，顺时针排列
+            if (res.box.size() == 4) {
+                ofs << "         \"P1\" : \"" << res.box[0][0] << "," << res.box[0][1] << "\",\n";
+                ofs << "         \"P2\" : \"" << res.box[1][0] << "," << res.box[1][1] << "\",\n";
+                ofs << "         \"P3\" : \"" << res.box[2][0] << "," << res.box[2][1] << "\",\n";
+                ofs << "         \"P4\" : \"" << res.box[3][0] << "," << res.box[3][1] << "\",\n";
+            }
+            else {
+                ofs << "         \"P1\" : \"\",\n";
+                ofs << "         \"P2\" : \"\",\n";
+                ofs << "         \"P3\" : \"\",\n";
+                ofs << "         \"P4\" : \"\",\n";
+            }
+            ofs << "         \"score\" : " << std::setprecision(10) << res.score << ",\n";
+            ofs << "         \"text\" : \"" << text << "\"\n";
+            ofs << "      }";
+        }
+    }
+    ofs << "\n   ]\n";
+    ofs << "}\n";
+    ofs.close();
+}
+
 
 void check_params() {
   if (FLAGS_det) {
@@ -80,7 +139,8 @@ void check_params() {
   }
 }
 
-void ocr(std::vector<cv::String> &cv_all_img_names) {
+void ocr(std::vector<cv::String> &cv_all_img_names,
+         std::vector<cv::String>& cv_all_dst_names) {
   PPOCR ocr;
 
   if (FLAGS_benchmark) {
@@ -101,7 +161,7 @@ void ocr(std::vector<cv::String> &cv_all_img_names) {
   }
 
   std::vector<std::vector<OCRPredictResult>> ocr_results =
-      ocr.ocr(img_list, FLAGS_det, FLAGS_rec, FLAGS_cls);
+      ocr.ocr(img_list, cv_all_dst_names, FLAGS_det, FLAGS_rec, FLAGS_cls);
 
   for (int i = 0; i < img_names.size(); ++i) {
     std::cout << "predict img: " << cv_all_img_names[i] << std::endl;
@@ -116,6 +176,7 @@ void ocr(std::vector<cv::String> &cv_all_img_names) {
   if (FLAGS_benchmark) {
     ocr.benchmark_log(cv_all_img_names.size());
   }
+  //save_result_json(ocr_results, "result.json");
 }
 
 void structure(std::vector<cv::String> &cv_all_img_names) {
@@ -173,9 +234,43 @@ void structure(std::vector<cv::String> &cv_all_img_names) {
   }
 }
 
+// 检查是否设置了use_gpu参数，如果未设置则自动检测cudnn64_9.dll
+void auto_set_use_gpu(int argc, char** argv) {
+    bool user_set_use_gpu = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strstr(argv[i], "--use_gpu") != nullptr) {
+            user_set_use_gpu = true;
+            break;
+        }
+    }
+	std::cout << "[INFO] use_gpu flag:" << user_set_use_gpu << std::endl;
+    if (!user_set_use_gpu) {
+        int device_count = 0;
+        cudaError_t status = cudaGetDeviceCount(&device_count);
+        std::cout << "[DBG] status=" << status << ", cnt=" << device_count << std::endl;
+        if (status != cudaSuccess || device_count == 0) {
+            FLAGS_use_gpu = false;
+            std::cout << "[INFO] not found cuda deivce, set use_gpu=false" << std::endl;
+        }
+    }
+}
+
+void append_pplib_to_path() {
+    char old_path[4096] = { 0 };
+    DWORD len = GetEnvironmentVariableA("PATH", old_path, sizeof(old_path));
+    std::string new_path = old_path;
+    if (!new_path.empty() && new_path.back() != ';') {
+        new_path += ";";
+    }
+    new_path += "pplib/cudnn12.6;pplib/cuda12.6";
+    SetEnvironmentVariableA("PATH", new_path.c_str());
+}
+
 int main(int argc, char **argv) {
+  append_pplib_to_path();
   // Parsing command-line
   google::ParseCommandLineFlags(&argc, &argv, true);
+  auto_set_use_gpu(argc, argv);
   check_params();
 
   if (!Utility::PathExists(FLAGS_image_dir)) {
@@ -184,15 +279,38 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
+  //读取json文件内的json数据
   std::vector<cv::String> cv_all_img_names;
-  cv::glob(FLAGS_image_dir, cv_all_img_names);
+  std::vector<cv::String> cv_all_dst_names;
+  Json::Reader jsonreader;
+  Json::Value root;
+  std::ifstream in(FLAGS_image_dir, std::ios::binary);
+
+  if (!in.is_open()) {
+      std::cerr << "[ERROR] Error opening file! image_dir: " << FLAGS_image_dir << std::endl;
+      exit(1);
+  }
+  if (jsonreader.parse(in, root))
+  {
+      for (unsigned int i = 0; i < root["files"].size(); i++)
+      {
+          std::string src = root["files"][i]["src"].asString();
+          cv_all_img_names.push_back(cv::String(src.c_str()));
+          std::string dst = root["files"][i]["dst"].asString();
+          cv_all_dst_names.push_back(cv::String(dst.c_str()));
+      }
+  }
+  in.close();
+
+  //std::vector<cv::String> cv_all_img_names;
+  //cv::glob(FLAGS_image_dir, cv_all_img_names);
   std::cout << "total images num: " << cv_all_img_names.size() << std::endl;
 
   if (!Utility::PathExists(FLAGS_output)) {
     Utility::CreateDir(FLAGS_output);
   }
   if (FLAGS_type == "ocr") {
-    ocr(cv_all_img_names);
+    ocr(cv_all_img_names, cv_all_dst_names);
   } else if (FLAGS_type == "structure") {
     structure(cv_all_img_names);
   } else {

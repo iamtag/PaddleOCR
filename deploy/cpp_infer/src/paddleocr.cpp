@@ -55,8 +55,59 @@ PPOCR::PPOCR() noexcept : pri_(new PPOCR_PRIVATE) {
 
 PPOCR::~PPOCR() { delete this->pri_; }
 
+void save_result_json(std::vector<OCRPredictResult>& ocr_result, const std::string& filename) {
+    std::ofstream ofs(filename);
+    if (!ofs.is_open()) {
+        std::cerr << "[ERROR] Failed to open " << filename << " for writing." << std::endl;
+        return;
+    }
+    ofs << "{\n";
+    ofs << "   \"code\" : \"0\",\n";
+    ofs << "   \"result\" : [\n";
+    bool first = true;
+    {
+        // 对每个图片的结果进行排序
+        Utility::sort_boxes(ocr_result);
+
+        for (const auto& res : ocr_result) {
+            // 如果分数小于等于0.7或者识别内容为空，则跳过
+            if (res.score <= 0.7 || res.text.empty()) {
+                continue;
+            }
+            // 去掉识别内容中的"
+            std::string text = res.text;
+            text.erase(std::remove(text.begin(), text.end(), '\"'), text.end());
+
+            if (!first) ofs << ",\n";
+            first = false;
+            ofs << "      {\n";
+            // 假设 box 是4个点，顺时针排列
+            if (res.box.size() == 4) {
+                ofs << "         \"P1\" : \"" << res.box[0][0] << "," << res.box[0][1] << "\",\n";
+                ofs << "         \"P2\" : \"" << res.box[1][0] << "," << res.box[1][1] << "\",\n";
+                ofs << "         \"P3\" : \"" << res.box[2][0] << "," << res.box[2][1] << "\",\n";
+                ofs << "         \"P4\" : \"" << res.box[3][0] << "," << res.box[3][1] << "\",\n";
+            }
+            else {
+                ofs << "         \"P1\" : \"\",\n";
+                ofs << "         \"P2\" : \"\",\n";
+                ofs << "         \"P3\" : \"\",\n";
+                ofs << "         \"P4\" : \"\",\n";
+            }
+            ofs << "         \"score\" : " << std::setprecision(10) << res.score << ",\n";
+            ofs << "         \"text\" : \"" << text << "\"\n";
+            ofs << "      }";
+        }
+    }
+    ofs << "\n   ]\n";
+    ofs << "}\n";
+    ofs.close();
+}
+
 std::vector<std::vector<OCRPredictResult>>
-PPOCR::ocr(const std::vector<cv::Mat> &img_list, bool det, bool rec,
+PPOCR::ocr(const std::vector<cv::Mat> &img_list, 
+           const std::vector<cv::String>& cv_all_dst_names,
+           bool det, bool rec,
            bool cls) noexcept {
   std::vector<std::vector<OCRPredictResult>> ocr_results;
 
@@ -82,6 +133,8 @@ PPOCR::ocr(const std::vector<cv::Mat> &img_list, bool det, bool rec,
     for (size_t i = 0; i < img_list.size(); ++i) {
       std::vector<OCRPredictResult> ocr_result =
           this->ocr(img_list[i], true, rec, cls);
+	  save_result_json(ocr_result, cv_all_dst_names[i]);
+      
       ocr_results.emplace_back(std::move(ocr_result));
     }
   }
@@ -141,7 +194,9 @@ void PPOCR::rec(const std::vector<cv::Mat> &img_list,
   std::vector<std::string> rec_texts(img_list.size(), std::string());
   std::vector<float> rec_text_scores(img_list.size(), 0);
   std::vector<double> rec_times;
-  this->pri_->recognizer_->Run(img_list, rec_texts, rec_text_scores, rec_times);
+  std::string res;
+  float score = 0;
+  this->pri_->recognizer_->Run(img_list, rec_texts, rec_text_scores, rec_times, res, score);
   // output rec results
   for (size_t i = 0; i < rec_texts.size(); ++i) {
     ocr_results[i].text = std::move(rec_texts[i]);

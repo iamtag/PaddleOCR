@@ -55,7 +55,7 @@ public:
         if (config["Global"] && config["Global"]["model_name"]) {
           model_name = config["Global"]["model_name"].as<std::string>();
         }
-        if (!model_name.empty()) {
+        if (model_name.empty()) {
           std::cerr << "Error: " << model_name << " is currently not supported."
                     << std::endl;
           std::exit(EXIT_FAILURE);
