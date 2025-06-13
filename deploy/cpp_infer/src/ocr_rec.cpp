@@ -24,7 +24,8 @@ namespace PaddleOCR {
 void CRNNRecognizer::Run(const std::vector<cv::Mat> &img_list,
                          std::vector<std::string> &rec_texts,
                          std::vector<float> &rec_text_scores,
-                         std::vector<double> &times) noexcept {
+                         std::vector<double> &times, 
+                         std::string& ores, float& oscore) noexcept {
   std::chrono::duration<float> preprocess_diff =
       std::chrono::duration<float>::zero();
   std::chrono::duration<float> inference_diff =
@@ -116,6 +117,7 @@ void CRNNRecognizer::Run(const std::vector<cv::Mat> &img_list,
           score += max_value;
           count += 1;
           str_res += label_list_[argmax_idx];
+          ores += label_list_[argmax_idx];
         }
         last_index = argmax_idx;
       }
@@ -125,6 +127,7 @@ void CRNNRecognizer::Run(const std::vector<cv::Mat> &img_list,
       }
       rec_texts[indices[beg_img_no + m]] = std::move(str_res);
       rec_text_scores[indices[beg_img_no + m]] = score;
+	  oscore = score;
     }
     auto postprocess_end = std::chrono::steady_clock::now();
     postprocess_diff += postprocess_end - postprocess_start;

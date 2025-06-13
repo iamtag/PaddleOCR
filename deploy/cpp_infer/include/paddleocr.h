@@ -24,7 +24,7 @@ public:
   virtual ~PPOCR();
 
   std::vector<std::vector<OCRPredictResult>>
-  ocr(const std::vector<cv::Mat> &img_list, bool det = true, bool rec = true,
+  ocr(const std::vector<cv::Mat> &img_list, const std::vector<cv::String>& cv_all_dst_names, bool det = true, bool rec = true,
       bool cls = true) noexcept;
   std::vector<OCRPredictResult> ocr(const cv::Mat &img, bool det = true,
                                     bool rec = true, bool cls = true) noexcept;
