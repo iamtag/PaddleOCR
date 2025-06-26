@@ -17,7 +17,75 @@
 
 #include "auto_log/autolog.h"
 
+#include <include/json/json.h>
+#include <ostream>
+
 namespace PaddleOCR {
+static bool PathExists(const std::string& path) {
+#ifdef _WIN32
+    struct _stat buffer;
+    return (_stat(path.c_str(), &buffer) == 0);
+#else
+    struct stat buffer;
+    return (stat(path.c_str(), &buffer) == 0);
+#endif  // !_WIN32
+}
+
+std::string& replace_all(std::string& str, const std::string& old_value, const std::string& new_value)
+{
+    while (true) {
+        std::string::size_type   pos(0);
+        if ((pos = str.find(old_value)) != std::string::npos)
+            str.replace(pos, old_value.length(), new_value);
+        else break;
+    }
+    return str;
+}
+
+void save_result_json(std::vector<OCRPredictResult>& ocr_result, const std::string& filename) {
+    Json::Value root;
+    root["code"] = Json::Value("0");
+    Json::Value results;
+	for (const auto& res : ocr_result) {
+		std::string res_text = res.text;
+        res_text = replace_all(res_text, "\"", "");
+        if (res.score <= 0.7 || res_text.empty()) {
+			continue; // Skip results with low confidence or empty text
+        }
+
+		Json::Value result;
+		result["text"] = Json::Value(res_text);
+		result["score"] = Json::Value(res.score);
+        // p1, p2, p3, p4 stand for
+        // p1------------p2
+        //  |             |
+        //  |             |
+        // p4------------p3
+        if (res.box.size() == 4) {
+			result["P1"] = Json::Value(std::to_string(res.box[0][0]) + "," + std::to_string(res.box[0][1]));
+			result["P2"] = Json::Value(std::to_string(res.box[1][0]) + "," + std::to_string(res.box[1][1]));
+			result["P3"] = Json::Value(std::to_string(res.box[2][0]) + "," + std::to_string(res.box[2][1]));
+			result["P4"] = Json::Value(std::to_string(res.box[3][0]) + "," + std::to_string(res.box[3][1]));
+
+        }
+        else {
+            result["P1"] = result["P2"] = result["P3"] = result["P4"] = Json::Value("");
+        }
+
+		results.append(result);
+	}
+    root["result"] = Json::Value(results);
+    if (PathExists(filename)) {
+        remove(filename.c_str());
+    }
+    Json::StyledWriter sw;
+    std::ofstream os;
+    os.open(filename, std::ios::out | std::ios::app);
+    if (!os.is_open())
+        std::cerr << "[ERROR] dsts open failed! dst path: " << filename << std::endl;
+    os << sw.write(root);
+    os.close();
+}
 
 PPOCR::PPOCR() {
   if (FLAGS_det) {
@@ -45,7 +113,7 @@ PPOCR::PPOCR() {
 };
 
 std::vector<std::vector<OCRPredictResult>>
-PPOCR::ocr(std::vector<cv::Mat> img_list, bool det, bool rec, bool cls) {
+PPOCR::ocr(std::vector<cv::Mat> img_list, const std::vector<cv::String>& cv_all_dst_names, bool det, bool rec, bool cls) {
   std::vector<std::vector<OCRPredictResult>> ocr_results;
 
   if (!det) {
@@ -73,6 +141,7 @@ PPOCR::ocr(std::vector<cv::Mat> img_list, bool det, bool rec, bool cls) {
       std::vector<OCRPredictResult> ocr_result =
           this->ocr(img_list[i], true, rec, cls);
       ocr_results.push_back(ocr_result);
+      save_result_json(ocr_result, cv_all_dst_names[i]);
     }
   }
   return ocr_results;

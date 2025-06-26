@@ -21,6 +21,9 @@
 #include <include/paddleocr.h>
 #include <include/paddlestructure.h>
 
+#include <include/json/json.h>
+#include <fstream>
+
 using namespace PaddleOCR;
 
 void check_params() {
@@ -81,7 +84,7 @@ void check_params() {
   }
 }
 
-void ocr(std::vector<cv::String> &cv_all_img_names) {
+void ocr(std::vector<cv::String> &cv_all_img_names, std::vector<cv::String> &cv_all_dst_names) {
   PPOCR ocr = PPOCR();
 
   if (FLAGS_benchmark) {
@@ -102,7 +105,7 @@ void ocr(std::vector<cv::String> &cv_all_img_names) {
   }
 
   std::vector<std::vector<OCRPredictResult>> ocr_results =
-      ocr.ocr(img_list, FLAGS_det, FLAGS_rec, FLAGS_cls);
+      ocr.ocr(img_list, cv_all_dst_names, FLAGS_det, FLAGS_rec, FLAGS_cls);
 
   for (int i = 0; i < img_names.size(); ++i) {
     std::cout << "predict img: " << cv_all_img_names[i] << std::endl;
@@ -186,14 +189,35 @@ int main(int argc, char **argv) {
   }
 
   std::vector<cv::String> cv_all_img_names;
-  cv::glob(FLAGS_image_dir, cv_all_img_names);
-  std::cout << "total images num: " << cv_all_img_names.size() << std::endl;
+  //cv::glob(FLAGS_image_dir, cv_all_img_names);
+  //std::cout << "total images num: " << cv_all_img_names.size() << std::endl;
+    //读取json文件内的json数据
+  std::vector<cv::String> cv_all_dst_names;
+  Json::Reader jsonreader;
+  Json::Value root;
+  std::ifstream in(FLAGS_image_dir, std::ios::binary);
+
+  if (!in.is_open()) {
+      std::cerr << "[ERROR] Error opening file! image_dir: " << FLAGS_image_dir << std::endl;
+      exit(1);
+  }
+  if (jsonreader.parse(in, root))
+  {
+      for (unsigned int i = 0; i < root["files"].size(); i++)
+      {
+          std::string src = root["files"][i]["src"].asString();
+          cv_all_img_names.push_back(cv::String(src.c_str()));
+          std::string dst = root["files"][i]["dst"].asString();
+          cv_all_dst_names.push_back(cv::String(dst.c_str()));
+      }
+  }
+  in.close();
 
   if (!Utility::PathExists(FLAGS_output)) {
     Utility::CreateDir(FLAGS_output);
   }
   if (FLAGS_type == "ocr") {
-    ocr(cv_all_img_names);
+    ocr(cv_all_img_names, cv_all_dst_names);
   } else if (FLAGS_type == "structure") {
     structure(cv_all_img_names);
   } else {

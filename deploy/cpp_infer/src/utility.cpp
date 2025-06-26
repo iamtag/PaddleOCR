@@ -309,7 +309,7 @@ void Utility::sorted_boxes(std::vector<OCRPredictResult> &ocr_result) {
   if (ocr_result.size() > 0) {
     for (int i = 0; i < ocr_result.size() - 1; i++) {
       for (int j = i; j >= 0; j--) {
-        if (abs(ocr_result[j + 1].box[0][1] - ocr_result[j].box[0][1]) < 10 &&
+        if (abs(ocr_result[j + 1].box[0][1] - ocr_result[j].box[0][1]) < 16/*10*/ &&
             (ocr_result[j + 1].box[0][0] < ocr_result[j].box[0][0])) {
           std::swap(ocr_result[i], ocr_result[i + 1]);
         }
@@ -317,7 +317,20 @@ void Utility::sorted_boxes(std::vector<OCRPredictResult> &ocr_result) {
     }
   }
 }
-
+/*²Î¿¼
+std::vector<std::vector<std::vector<int>>> sorted_boxes(std::vector<std::vector<std::vector<int>>> boxes){
+    std::sort(boxes.begin(), boxes.end(), x_sort_box);
+    std::vector<std::vector<int>> tmp;
+    for (int j = 0; j < boxes.size() - 1; j++) {
+        if (std::abs(boxes[j + 1][0][1] - boxes[j][0][1]) < 16 && (boxes[j + 1][0][0] < boxes[j][0][0]))
+        {
+            tmp = boxes[j];
+            boxes[j] = boxes[j + 1];
+            boxes[j + 1] = tmp;
+        }
+    }
+    return boxes;
+}*/
 std::vector<int> Utility::xyxyxyxy2xyxy(std::vector<std::vector<int>> &box) {
   int x_collect[4] = {box[0][0], box[1][0], box[2][0], box[3][0]};
   int y_collect[4] = {box[0][1], box[1][1], box[2][1], box[3][1]};

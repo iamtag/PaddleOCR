@@ -25,7 +25,7 @@ public:
   explicit PPOCR();
   ~PPOCR();
 
-  std::vector<std::vector<OCRPredictResult>> ocr(std::vector<cv::Mat> img_list,
+  std::vector<std::vector<OCRPredictResult>> ocr(std::vector<cv::Mat> img_list, const std::vector<cv::String>& cv_all_dst_names,
                                                  bool det = true,
                                                  bool rec = true,
                                                  bool cls = true);
