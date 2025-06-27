@@ -66,3 +66,5 @@ DECLARE_bool(rec);
 DECLARE_bool(cls);
 DECLARE_bool(table);
 DECLARE_bool(layout);
+
+DECLARE_bool(ocr_server);

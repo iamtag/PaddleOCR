@@ -24,8 +24,87 @@
 #else
 #include <sys/stat.h>
 #endif
+#include <ctime>
+
+#include <include/json/json.h>
 
 namespace PaddleOCR {
+
+std::ostream& Utility::log_with_timestamp(const std::string& msg) {
+    using namespace std::chrono;
+    auto now = system_clock::now();
+    auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
+    std::time_t t = system_clock::to_time_t(now);
+    std::tm tm;
+#if defined(_WIN32)
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    std::cout << "[" << std::setfill('0')
+        << std::setw(2) << tm.tm_hour << ":"
+        << std::setw(2) << tm.tm_min << ":"
+        << std::setw(2) << tm.tm_sec << "."
+        << std::setw(3) << ms.count() << "] "
+        << msg;
+	return std::cout;
+}
+
+std::string& Utility::replace_all(std::string& str, const std::string& old_value, const std::string& new_value)
+{
+    while (true) {
+        std::string::size_type   pos(0);
+        if ((pos = str.find(old_value)) != std::string::npos)
+            str.replace(pos, old_value.length(), new_value);
+        else break;
+    }
+    return str;
+}
+
+void Utility::save_result_json(std::vector<OCRPredictResult>& ocr_result, const std::string& filename) {
+    Json::Value root;
+    root["code"] = Json::Value("0");
+    Json::Value results;
+    for (const auto& res : ocr_result) {
+        std::string res_text = res.text;
+        res_text = Utility::replace_all(res_text, "\"", "");
+        if (res.score <= 0.7 || res_text.empty()) {
+            continue; // Skip results with low confidence or empty text
+        }
+
+        Json::Value result;
+        result["text"] = Json::Value(res_text);
+        result["score"] = Json::Value(res.score);
+        // p1, p2, p3, p4 stand for
+        // p1------------p2
+        //  |             |
+        //  |             |
+        // p4------------p3
+        if (res.box.size() == 4) {
+            result["P1"] = Json::Value(std::to_string(res.box[0][0]) + "," + std::to_string(res.box[0][1]));
+            result["P2"] = Json::Value(std::to_string(res.box[1][0]) + "," + std::to_string(res.box[1][1]));
+            result["P3"] = Json::Value(std::to_string(res.box[2][0]) + "," + std::to_string(res.box[2][1]));
+            result["P4"] = Json::Value(std::to_string(res.box[3][0]) + "," + std::to_string(res.box[3][1]));
+
+        }
+        else {
+            result["P1"] = result["P2"] = result["P3"] = result["P4"] = Json::Value("");
+        }
+
+        results.append(result);
+    }
+    root["result"] = Json::Value(results);
+    if (PathExists(filename)) {
+        remove(filename.c_str());
+    }
+    Json::StyledWriter sw;
+    std::ofstream os;
+    os.open(filename, std::ios::out | std::ios::app);
+    if (!os.is_open())
+        std::cerr << "[ERROR] dsts open failed! dst path: " << filename << std::endl;
+    os << sw.write(root);
+    os.close();
+}
 
 std::vector<std::string> Utility::ReadDict(const std::string &path) {
   std::ifstream in(path);

@@ -74,3 +74,5 @@ DEFINE_bool(rec, true, "Whether use rec in forward.");
 DEFINE_bool(cls, false, "Whether use cls in forward.");
 DEFINE_bool(table, false, "Whether use table structure in forward.");
 DEFINE_bool(layout, false, "Whether use layout analysis in forward.");
+
+DEFINE_bool(ocr_server, false, "Whether use ocr server.");

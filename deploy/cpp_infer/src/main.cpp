@@ -23,6 +23,7 @@
 
 #include <include/json/json.h>
 #include <fstream>
+#include <include/socket_utils.h>
 
 using namespace PaddleOCR;
 
@@ -84,6 +85,85 @@ void check_params() {
   }
 }
 
+std::string ocr_results_to_string(const std::vector<OCRPredictResult> &ocr_results) {
+  /*鍙傝�僺ave_result_json鍑芥暟浠ｇ爜*/
+  Json::Value root;
+  Json::Value results;
+  for (const auto& res : ocr_results) {
+    std::string res_text = res.text;
+    res_text = Utility::replace_all(res_text, "\"", "");
+    if (res.score <= 0.7 || res_text.empty()) {
+      continue; // Skip results with low confidence or empty text
+    }
+    
+    Json::Value result;
+    result["text"] = Json::Value(res_text);
+    result["score"] = Json::Value(res.score);
+    // p1, p2, p3, p4 stand for
+    // p1------------p2
+    //  |             |
+    //  |             |
+    // p4------------p3
+    if (res.box.size() == 4) {
+      result["P1"] = Json::Value(std::to_string(res.box[0][0]) + "," + std::to_string(res.box[0][1]));
+      result["P2"] = Json::Value(std::to_string(res.box[1][0]) + "," + std::to_string(res.box[1][1]));
+      result["P3"] = Json::Value(std::to_string(res.box[2][0]) + "," + std::to_string(res.box[2][1]));
+      result["P4"] = Json::Value(std::to_string(res.box[3][0]) + "," + std::to_string(res.box[3][1]));
+    }
+    else {
+      result["P1"] = result["P2"] = result["P3"] = result["P4"] = Json::Value("");
+    }
+    results.append(result);
+  }
+  root["result"] = Json::Value(results);
+  root["code"] = Json::Value("0");
+  root["message"] = Json::Value("success");
+  Json::StyledWriter sw;
+  return sw.write(root);
+}
+
+void ocr_service() {
+  SocketServer server(8866);
+  server.start();
+  PPOCR ocr = PPOCR();
+  std::string json_string;
+  std::vector<OCRPredictResult> ocr_results;
+  std::string img_path, dst_json_path;
+  while (true) {
+	Utility::log_with_timestamp("[INFO] waiting for client connection...") << std::endl;
+    json_string = server.receive();
+    if (json_string.empty()) {
+      continue;
+    }
+    if (json_string == "EXIT") {
+      break;
+    }
+
+    Json::Value input_json_value;
+    Json::Reader reader;
+    reader.parse(json_string, input_json_value);
+    img_path = input_json_value["img_path"].asString();
+	dst_json_path = input_json_value["dst_json_path"].asString();
+	Utility::log_with_timestamp("[INFO] received image path: ") << img_path << " dst_json_path: " << dst_json_path << std::endl;
+
+    cv::Mat img = cv::imread(img_path, cv::IMREAD_COLOR);
+    if (!img.data) {
+      json_string = "{\"code\": \"1\", \"message\": \"image read failed!\"}";//鎸夋爣鍑咥PI杩斿洖鏍煎紡杩斿洖
+      std::cerr << "[ERROR] image read failed! image path: "
+                << img_path << std::endl;
+    } else {
+      ocr_results = ocr.ocr(img);
+      if (!dst_json_path.empty()) {
+		  Utility::save_result_json(ocr_results, dst_json_path);
+          json_string = ""; //璋冪敤server.send("")鍏抽棴socket杩炴帴
+	  }
+	  else {
+		  json_string = ocr_results_to_string(ocr_results);
+	  }
+    }
+    server.send(json_string);
+  }
+}
 void ocr(std::vector<cv::String> &cv_all_img_names, std::vector<cv::String> &cv_all_dst_names) {
   PPOCR ocr = PPOCR();
 
@@ -180,6 +260,10 @@ void structure(std::vector<cv::String> &cv_all_img_names) {
 int main(int argc, char **argv) {
   // Parsing command-line
   google::ParseCommandLineFlags(&argc, &argv, true);
+  if (FLAGS_ocr_server) {
+      ocr_service();
+      return 0;
+  }
   check_params();
 
   if (!Utility::PathExists(FLAGS_image_dir)) {
@@ -189,9 +273,6 @@ int main(int argc, char **argv) {
   }
 
   std::vector<cv::String> cv_all_img_names;
-  //cv::glob(FLAGS_image_dir, cv_all_img_names);
-  //std::cout << "total images num: " << cv_all_img_names.size() << std::endl;
-    //读取json文件内的json数据
   std::vector<cv::String> cv_all_dst_names;
   Json::Reader jsonreader;
   Json::Value root;

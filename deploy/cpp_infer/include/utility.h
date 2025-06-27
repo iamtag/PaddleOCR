@@ -52,6 +52,10 @@ struct StructurePredictResult {
 
 class Utility {
 public:
+  static std::ostream& log_with_timestamp(const std::string& msg);
+  static std::string& replace_all(std::string& str, const std::string& old_value, const std::string& new_value);
+  static void save_result_json(std::vector<OCRPredictResult>& ocr_result, const std::string& filename);
+
   static std::vector<std::string> ReadDict(const std::string &path);
 
   static void VisualizeBboxes(const cv::Mat &srcimg,
