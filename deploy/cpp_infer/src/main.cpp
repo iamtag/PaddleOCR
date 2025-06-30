@@ -122,6 +122,23 @@ std::string ocr_results_to_string(const std::vector<OCRPredictResult> &ocr_resul
   return sw.write(root);
 }
 
+void ocr_client() {
+    SocketClient client(8866);
+    client.connect();
+
+    std::string img_path = FLAGS_image_dir;
+    std::string dst_json_path = FLAGS_output_json_path;
+    std::string json_string;
+	if (img_path == "EXIT") {
+		json_string = "EXIT";
+    }
+    else {
+        json_string = "{\"img_path\":\"" + img_path + "\", \"dst_json_path\":\"" + dst_json_path + "\"}";
+    }
+	Utility::log_with_timestamp("[INFO] sending image path: ") << img_path << " dst_json_path: " << dst_json_path << std::endl;
+	client.send(json_string);
+}
+
 void ocr_service() {
   SocketServer server(8866);
   server.start();
@@ -263,6 +280,10 @@ int main(int argc, char **argv) {
   if (FLAGS_ocr_server) {
       ocr_service();
       return 0;
+  }
+  if (FLAGS_ocr_client) {
+	  ocr_client();
+	  return 0;
   }
   check_params();
 

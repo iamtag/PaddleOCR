@@ -76,3 +76,6 @@ DEFINE_bool(table, false, "Whether use table structure in forward.");
 DEFINE_bool(layout, false, "Whether use layout analysis in forward.");
 
 DEFINE_bool(ocr_server, false, "Whether use ocr server.");
+DEFINE_bool(ocr_client, false, "Whether use ocr client.");
+DEFINE_string(output_json_path, "",
+	"full pathname of output json file, only used in ocr client mode.");

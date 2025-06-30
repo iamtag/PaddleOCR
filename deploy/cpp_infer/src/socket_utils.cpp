@@ -77,3 +77,57 @@ void SocketServer::send(const std::string& data) {
     closesocket(client_fd_);
     client_fd_ = INVALID_SOCKET;
 }
+
+
+
+SocketClient::SocketClient(int port)
+	: port_(port), client_fd_(INVALID_SOCKET) {
+	WSADATA wsaData;
+	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+		perror("WSAStartup failed");
+		exit(EXIT_FAILURE);
+	}
+}
+
+SocketClient::~SocketClient() {
+	if (client_fd_ != INVALID_SOCKET) closesocket(client_fd_);
+	WSACleanup();
+}
+
+void SocketClient::connect() {
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "WSAStartup failed" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    client_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+    if (client_fd_ == INVALID_SOCKET) {
+        std::cerr << "socket failed" << std::endl;
+        WSACleanup();
+        exit(EXIT_FAILURE);
+    }
+    sockaddr_in serv_addr;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port_);
+    serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    if (::connect(client_fd_, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+        std::cerr << "connect failed" << std::endl;
+        closesocket(client_fd_);
+        WSACleanup();
+        exit(EXIT_FAILURE);
+    }
+}
+
+void SocketClient::send(const std::string& data) {
+    ::send(client_fd_, data.c_str(), data.size(), 0);
+}
+
+std::string SocketClient::receive() {
+    char buffer[8192] = { 0 };
+    int bytes_read = recv(client_fd_, buffer, sizeof(buffer), 0);
+    if (bytes_read <= 0) {
+        return "";
+    }
+    return std::string(buffer, bytes_read);
+}

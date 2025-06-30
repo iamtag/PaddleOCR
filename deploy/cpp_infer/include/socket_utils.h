@@ -19,3 +19,17 @@ private:
   //struct sockaddr_in client_addr_;
   //socklen_t client_addr_len_;
 };
+
+class SocketClient {
+public:
+  SocketClient(int port = 8866);
+  ~SocketClient();
+
+  void connect();
+  void send(const std::string& data);
+  std::string receive();
+
+private:
+  int port_;
+  int client_fd_;
+};
