@@ -67,6 +67,6 @@ DECLARE_bool(cls);
 DECLARE_bool(table);
 DECLARE_bool(layout);
 
-DECLARE_bool(ocr_server);
+DECLARE_bool(start_server);
 DECLARE_bool(ocr_client);
 DECLARE_string(output_json_path);

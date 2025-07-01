@@ -52,9 +52,12 @@ struct StructurePredictResult {
 
 class Utility {
 public:
+  static bool is_json_file(const std::string& path);
+  static bool parse_input_json(const std::string& input_json_path, std::vector<cv::String>& cv_all_img_names, std::vector<cv::String> &cv_all_dst_names);
   static std::ostream& log_with_timestamp(const std::string& msg);
   static std::string& replace_all(std::string& str, const std::string& old_value, const std::string& new_value);
-  static void save_result_json(std::vector<OCRPredictResult>& ocr_result, const std::string& filename);
+  static std::string ocr_results_to_string(const std::vector<OCRPredictResult>& ocr_results);
+  static int save_result_json(std::vector<OCRPredictResult>& ocr_result, const std::string& filename);
 
   static std::vector<std::string> ReadDict(const std::string &path);
 

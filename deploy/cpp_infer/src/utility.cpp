@@ -27,8 +27,41 @@
 #include <ctime>
 
 #include <include/json/json.h>
+#include <algorithm>
 
 namespace PaddleOCR {
+
+bool Utility::is_json_file(const std::string& path) {
+    if (path.length() < 5) return false;
+    std::string lower = path.substr(path.length() - 5);
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    return lower == ".json";
+}
+
+bool Utility::parse_input_json(const std::string& input_json_path, std::vector<cv::String>& cv_all_img_names, std::vector<cv::String>& cv_all_dst_names) {
+    bool ret = false;
+    Json::Reader jsonreader;
+    Json::Value root;
+    std::ifstream in(input_json_path, std::ios::binary);
+
+    if (!in.is_open()) {
+        std::cerr << "[ERROR] Error opening file! image_dir: " << input_json_path << std::endl;
+        exit(1);
+    }
+    if (jsonreader.parse(in, root))
+    {
+        for (unsigned int i = 0; i < root["files"].size(); i++)
+        {
+            std::string src = root["files"][i]["src"].asString();
+            cv_all_img_names.push_back(cv::String(src.c_str()));
+            std::string dst = root["files"][i]["dst"].asString();
+            cv_all_dst_names.push_back(cv::String(dst.c_str()));
+        }
+        ret = true;
+    }
+    in.close();
+    return ret;
+}
 
 std::ostream& Utility::log_with_timestamp(const std::string& msg) {
     using namespace std::chrono;
@@ -61,11 +94,11 @@ std::string& Utility::replace_all(std::string& str, const std::string& old_value
     return str;
 }
 
-void Utility::save_result_json(std::vector<OCRPredictResult>& ocr_result, const std::string& filename) {
+std::string Utility::ocr_results_to_string(const std::vector<OCRPredictResult>& ocr_results) {
     Json::Value root;
     root["code"] = Json::Value("0");
     Json::Value results;
-    for (const auto& res : ocr_result) {
+    for (const auto& res : ocr_results) {
         std::string res_text = res.text;
         res_text = Utility::replace_all(res_text, "\"", "");
         if (res.score <= 0.7 || res_text.empty()) {
@@ -94,16 +127,24 @@ void Utility::save_result_json(std::vector<OCRPredictResult>& ocr_result, const 
         results.append(result);
     }
     root["result"] = Json::Value(results);
+    Json::StyledWriter sw;
+    return sw.write(root);
+}
+
+int Utility::save_result_json(std::vector<OCRPredictResult>& ocr_result, const std::string& filename) {
+	std::string output_json = Utility::ocr_results_to_string(ocr_result);
+	int output_length = output_json.length();
+
     if (PathExists(filename)) {
         remove(filename.c_str());
     }
-    Json::StyledWriter sw;
     std::ofstream os;
     os.open(filename, std::ios::out | std::ios::app);
     if (!os.is_open())
         std::cerr << "[ERROR] dsts open failed! dst path: " << filename << std::endl;
-    os << sw.write(root);
+    os << output_json;
     os.close();
+    return output_length;
 }
 
 std::vector<std::string> Utility::ReadDict(const std::string &path) {

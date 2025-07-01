@@ -60,7 +60,7 @@ std::string SocketServer::receive() {
         return "";
     }
 
-    char buffer[4096] = {0};
+    char buffer[8192] = {0};
     int bytes_read = recv(client_fd_, buffer, sizeof(buffer), 0);
     if (bytes_read <= 0) {
         perror("read failed");
@@ -72,7 +72,16 @@ std::string SocketServer::receive() {
 void SocketServer::send(const std::string& data) {
     if (client_fd_ == INVALID_SOCKET) return;
     if (!data.empty()) {
-        ::send(client_fd_, data.c_str(), data.size(), 0);
+		size_t total_sent = 0;
+		size_t data_size = data.size();
+		while (total_sent < data_size) {
+			int sent = ::send(client_fd_, data.c_str() + total_sent, data_size - total_sent, 0);
+			if (sent == SOCKET_ERROR) {
+				perror("send failed");
+				return;
+			}
+			total_sent += sent;
+		}
     }
     closesocket(client_fd_);
     client_fd_ = INVALID_SOCKET;
@@ -124,10 +133,17 @@ void SocketClient::send(const std::string& data) {
 }
 
 std::string SocketClient::receive() {
-    char buffer[8192] = { 0 };
-    int bytes_read = recv(client_fd_, buffer, sizeof(buffer), 0);
-    if (bytes_read <= 0) {
-        return "";
-    }
-    return std::string(buffer, bytes_read);
+	// 数据有可能一次接收不完，所以需要循环接收
+	char buffer[8193] = { 0 };
+	std::string received_data;
+	int bytes_read;
+	while ((bytes_read = recv(client_fd_, buffer, sizeof(buffer) - 1, 0)) > 0) {
+		buffer[bytes_read] = '\0'; // 确保字符串结束
+		received_data += buffer;
+	}
+	if (bytes_read < 0) {
+		perror("recv failed");
+		return "";
+	}
+	return received_data;
 }

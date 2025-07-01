@@ -85,58 +85,41 @@ void check_params() {
   }
 }
 
-std::string ocr_results_to_string(const std::vector<OCRPredictResult> &ocr_results) {
-  /*参考save_result_json函数代码*/
-  Json::Value root;
-  Json::Value results;
-  for (const auto& res : ocr_results) {
-    std::string res_text = res.text;
-    res_text = Utility::replace_all(res_text, "\"", "");
-    if (res.score <= 0.7 || res_text.empty()) {
-      continue; // Skip results with low confidence or empty text
-    }
-    
-    Json::Value result;
-    result["text"] = Json::Value(res_text);
-    result["score"] = Json::Value(res.score);
-    // p1, p2, p3, p4 stand for
-    // p1------------p2
-    //  |             |
-    //  |             |
-    // p4------------p3
-    if (res.box.size() == 4) {
-      result["P1"] = Json::Value(std::to_string(res.box[0][0]) + "," + std::to_string(res.box[0][1]));
-      result["P2"] = Json::Value(std::to_string(res.box[1][0]) + "," + std::to_string(res.box[1][1]));
-      result["P3"] = Json::Value(std::to_string(res.box[2][0]) + "," + std::to_string(res.box[2][1]));
-      result["P4"] = Json::Value(std::to_string(res.box[3][0]) + "," + std::to_string(res.box[3][1]));
-    }
-    else {
-      result["P1"] = result["P2"] = result["P3"] = result["P4"] = Json::Value("");
-    }
-    results.append(result);
-  }
-  root["result"] = Json::Value(results);
-  root["code"] = Json::Value("0");
-  root["message"] = Json::Value("success");
-  Json::StyledWriter sw;
-  return sw.write(root);
-}
-
-void ocr_client() {
+void ocr_client_handle_one_file(const std::string& img_path, const std::string& dst_json_path) {
     SocketClient client(8866);
     client.connect();
 
-    std::string img_path = FLAGS_image_dir;
-    std::string dst_json_path = FLAGS_output_json_path;
     std::string json_string;
-	if (img_path == "EXIT") {
-		json_string = "EXIT";
+    if (img_path == "EXIT") {
+        json_string = "EXIT";
     }
     else {
         json_string = "{\"img_path\":\"" + img_path + "\", \"dst_json_path\":\"" + dst_json_path + "\"}";
     }
-	Utility::log_with_timestamp("[INFO] sending image path: ") << img_path << " dst_json_path: " << dst_json_path << std::endl;
-	client.send(json_string);
+    Utility::log_with_timestamp("[INFO] sending image path: ") << img_path << " dst_json_path: " << dst_json_path << std::endl;
+    client.send(json_string);
+    json_string = client.receive();
+    if (json_string.empty()) {
+        std::cerr << "[ERROR] No response from server." << std::endl;
+        return;
+    }
+    Utility::log_with_timestamp("[INFO] ") << json_string << std::endl;
+}
+
+void ocr_client() {
+	std::string image_dir = FLAGS_image_dir;
+    if (Utility::is_json_file(image_dir)) {
+        std::vector<cv::String> cv_all_img_names;
+        std::vector<cv::String> cv_all_dst_names;
+        if (Utility::parse_input_json(image_dir, cv_all_img_names, cv_all_dst_names)) {
+            for (size_t i = 0; i < cv_all_img_names.size(); ++i) {
+                ocr_client_handle_one_file(cv_all_img_names[i], cv_all_dst_names[i]);
+            }
+        }
+    }
+    else {
+        ocr_client_handle_one_file(image_dir, FLAGS_output_json_path);
+    }
 }
 
 void ocr_service() {
@@ -147,7 +130,7 @@ void ocr_service() {
   std::vector<OCRPredictResult> ocr_results;
   std::string img_path, dst_json_path;
   while (true) {
-	Utility::log_with_timestamp("[INFO] waiting for client connection...") << std::endl;
+	  Utility::log_with_timestamp("[INFO] waiting for client connection...") << std::endl;
     json_string = server.receive();
     if (json_string.empty()) {
       continue;
@@ -160,9 +143,10 @@ void ocr_service() {
     Json::Reader reader;
     reader.parse(json_string, input_json_value);
     img_path = input_json_value["img_path"].asString();
-	dst_json_path = input_json_value["dst_json_path"].asString();
-	Utility::log_with_timestamp("[INFO] received image path: ") << img_path << " dst_json_path: " << dst_json_path << std::endl;
+    dst_json_path = input_json_value["dst_json_path"].asString();
+    Utility::log_with_timestamp("[INFO] received image path: ") << img_path << " dst_json_path: " << dst_json_path << std::endl;
 
+    int output_length = 0;
     cv::Mat img = cv::imread(img_path, cv::IMREAD_COLOR);
     if (!img.data) {
       json_string = "{\"code\": \"1\", \"message\": \"image read failed!\"}";//按标准API返回格式返回
@@ -171,16 +155,26 @@ void ocr_service() {
     } else {
       ocr_results = ocr.ocr(img);
       if (!dst_json_path.empty()) {
-		  Utility::save_result_json(ocr_results, dst_json_path);
-          json_string = ""; //调用server.send("")关闭socket连接
-	  }
-	  else {
-		  json_string = ocr_results_to_string(ocr_results);
-	  }
+        output_length = Utility::save_result_json(ocr_results, dst_json_path);
+		if (output_length <= 0) {
+			json_string = "{\"code\": \"1\", \"message\": \"save result json failed!\"}";
+			std::cerr << "[ERROR] save result json failed! dst path: "
+				<< dst_json_path << std::endl;
+		}
+		else {
+			json_string = "{\"code\": \"0\", \"message\": \"success\", \"output_length\": " + std::to_string(output_length) + "}";
+		}
+      }
+      else {
+        json_string = Utility::ocr_results_to_string(ocr_results);
+        output_length = json_string.length();
+      }
     }
     server.send(json_string);
+    Utility::log_with_timestamp("[INFO] output_length:") << output_length << std::endl;
   }
 }
+
 void ocr(std::vector<cv::String> &cv_all_img_names, std::vector<cv::String> &cv_all_dst_names) {
   PPOCR ocr = PPOCR();
 
@@ -277,7 +271,7 @@ void structure(std::vector<cv::String> &cv_all_img_names) {
 int main(int argc, char **argv) {
   // Parsing command-line
   google::ParseCommandLineFlags(&argc, &argv, true);
-  if (FLAGS_ocr_server) {
+  if (FLAGS_start_server) {
       ocr_service();
       return 0;
   }
@@ -295,25 +289,7 @@ int main(int argc, char **argv) {
 
   std::vector<cv::String> cv_all_img_names;
   std::vector<cv::String> cv_all_dst_names;
-  Json::Reader jsonreader;
-  Json::Value root;
-  std::ifstream in(FLAGS_image_dir, std::ios::binary);
-
-  if (!in.is_open()) {
-      std::cerr << "[ERROR] Error opening file! image_dir: " << FLAGS_image_dir << std::endl;
-      exit(1);
-  }
-  if (jsonreader.parse(in, root))
-  {
-      for (unsigned int i = 0; i < root["files"].size(); i++)
-      {
-          std::string src = root["files"][i]["src"].asString();
-          cv_all_img_names.push_back(cv::String(src.c_str()));
-          std::string dst = root["files"][i]["dst"].asString();
-          cv_all_dst_names.push_back(cv::String(dst.c_str()));
-      }
-  }
-  in.close();
+  Utility::parse_input_json(FLAGS_image_dir, cv_all_img_names, cv_all_dst_names);  
 
   if (!Utility::PathExists(FLAGS_output)) {
     Utility::CreateDir(FLAGS_output);
