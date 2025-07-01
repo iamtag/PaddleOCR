@@ -29,7 +29,7 @@ DEFINE_string(
     type, "ocr",
     "Perform ocr or structure, the value is selected in ['ocr','structure'].");
 // detection related
-DEFINE_string(det_model_dir, "pplib/ch_ppocr_det_infer", "Path of det inference model.");//
+DEFINE_string(det_model_dir, "", "Path of det inference model.");//
 DEFINE_string(limit_type, "max", "limit_type of input image.");
 DEFINE_int32(limit_side_len, 960, "limit_side_len of input image.");
 DEFINE_double(det_db_thresh, 0.4, "Threshold of det_db_thresh.");//0.3
@@ -40,13 +40,13 @@ DEFINE_string(det_db_score_mode, "slow", "Whether use polygon score.");
 DEFINE_bool(visualize, false, "Whether show the detection results.");//true
 // classification related
 DEFINE_bool(use_angle_cls, true, "Whether use use_angle_cls.");//false
-DEFINE_string(cls_model_dir, "pplib/ch_ppocr_cls_infer", "Path of cls inference model.");//
+DEFINE_string(cls_model_dir, "", "Path of cls inference model.");//
 DEFINE_double(cls_thresh, 0.9, "Threshold of cls_thresh.");
 DEFINE_int32(cls_batch_num, 1, "cls_batch_num.");
 // recognition related
-DEFINE_string(rec_model_dir, "pplib/ch_ppocr_rec_infer", "Path of rec inference model.");//
+DEFINE_string(rec_model_dir, "", "Path of rec inference model.");//
 DEFINE_int32(rec_batch_num, 6, "rec_batch_num.");
-DEFINE_string(rec_char_dict_path, "pplib/ppocr_keys_v1.txt",
+DEFINE_string(rec_char_dict_path, "",
               "Path of dictionary.");//../../ppocr/utils/ppocr_keys_v1.txt
 DEFINE_int32(rec_img_h, 48, "rec image height");
 DEFINE_int32(rec_img_w, 320, "rec image width");

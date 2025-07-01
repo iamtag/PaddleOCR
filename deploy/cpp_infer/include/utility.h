@@ -52,6 +52,7 @@ struct StructurePredictResult {
 
 class Utility {
 public:
+  static std::string get_application_path();
   static bool is_json_file(const std::string& path);
   static bool parse_input_json(const std::string& input_json_path, std::vector<cv::String>& cv_all_img_names, std::vector<cv::String> &cv_all_dst_names);
   static std::ostream& log_with_timestamp(const std::string& msg);

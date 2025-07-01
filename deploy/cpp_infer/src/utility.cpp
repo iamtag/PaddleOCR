@@ -31,6 +31,29 @@
 
 namespace PaddleOCR {
 
+std::string Utility::get_application_path() {
+#ifdef _WIN32
+	char buffer[MAX_PATH];
+	GetModuleFileNameA(NULL, buffer, MAX_PATH);
+	std::string path(buffer);
+#else
+	char buffer[PATH_MAX];
+	if (readlink("/proc/self/exe", buffer, sizeof(buffer) - 1) == -1) {
+		std::cerr << "[ERROR] Failed to get application path." << std::endl;
+		return "";
+	}
+	buffer[sizeof(buffer) - 1] = '\0'; // Ensure null-termination
+	std::string path(buffer);
+#endif // _WIN32
+	// Remove the executable name from the path
+	size_t pos = path.find_last_of("/\\");
+	if (pos != std::string::npos) {
+		path = path.substr(0, pos);
+	}
+	return path;
+}
+
+
 bool Utility::is_json_file(const std::string& path) {
     if (path.length() < 5) return false;
     std::string lower = path.substr(path.length() - 5);
