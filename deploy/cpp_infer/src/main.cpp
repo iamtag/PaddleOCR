@@ -129,6 +129,23 @@ void ocr_service() {
   std::string json_string;
   std::vector<OCRPredictResult> ocr_results;
   std::string img_path, dst_json_path;
+
+  //通过ocr一个测试样例图片，预加载所需资源
+  std::string test_file = "textline.png";
+  if (Utility::PathExists(test_file)) {
+	  cv::Mat img = cv::imread(test_file, cv::IMREAD_COLOR);
+	  if (!img.data) {
+		  std::cerr << "[ERROR] test image read failed! image path: "
+			  << test_file << std::endl;
+		  return;
+	  }
+	  ocr_results = ocr.ocr(img);
+	  Utility::log_with_timestamp("[INFO] pre-load OCR resources with test image: ") << test_file << std::endl;
+  }
+  else {
+	  Utility::log_with_timestamp("[WARNING] test image not found, skipping pre-load.") << std::endl;
+  }
+
   while (true) {
 	  Utility::log_with_timestamp("[INFO] waiting for client connection...") << std::endl;
     json_string = server.receive();
