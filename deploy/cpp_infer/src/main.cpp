@@ -128,16 +128,16 @@ void ocr_service() {
     if (!application_path.empty()) {
         std::string model_dir = application_path + "/pplib";
         if (FLAGS_det_model_dir.empty()) {
-            FLAGS_det_model_dir = model_dir + "/PP-OCRv5_mobile_det_infer";
+            FLAGS_det_model_dir = model_dir + "/PP-OCRv4_mobile_det";
         }
         if (FLAGS_rec_model_dir.empty()) {
-            FLAGS_rec_model_dir = model_dir + "/PP-OCRv5_mobile_rec_infer";
+            FLAGS_rec_model_dir = model_dir + "/PP-OCRv4_mobile_rec";
         }
-#if 0
         if (FLAGS_cls_model_dir.empty()) {
-            FLAGS_cls_model_dir = model_dir + "/ch_ppocr_cls_infer";
+            FLAGS_cls_model_dir = model_dir + "/PP-LCNet_x0_25_textline_ori";
+            FLAGS_use_angle_cls = true;
+            FLAGS_cls = true;
         }
-#endif
         if (FLAGS_rec_char_dict_path.empty()) {
             FLAGS_rec_char_dict_path = model_dir + "/ppocr_keys_v1.txt";
         }

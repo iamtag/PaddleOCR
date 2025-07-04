@@ -30,8 +30,8 @@ DEFINE_string(
     "Perform ocr or structure, the value is selected in ['ocr','structure'].");
 // detection related
 DEFINE_string(det_model_dir, "", "Path of det inference model.");
-DEFINE_string(limit_type, "max", "limit_type of input image.");
-DEFINE_int32(limit_side_len, 960, "limit_side_len of input image.");
+DEFINE_string(limit_type, "min", "limit_type of input image.");//max
+DEFINE_int32(limit_side_len, 64, "limit_side_len of input image.");//960
 DEFINE_double(det_db_thresh, 0.3, "Threshold of det_db_thresh.");
 DEFINE_double(det_db_box_thresh, 0.6, "Threshold of det_db_box_thresh.");
 DEFINE_double(det_db_unclip_ratio, 1.5, "Threshold of det_db_unclip_ratio.");
@@ -47,7 +47,7 @@ DEFINE_int32(cls_batch_num, 1, "cls_batch_num.");
 DEFINE_string(rec_model_dir, "", "Path of rec inference model.");
 DEFINE_int32(rec_batch_num, 6, "rec_batch_num.");
 DEFINE_string(rec_char_dict_path, "",
-              "Path of dictionary.");//../../ppocr/utils/ppocr_keys_v1.txt
+              "../../ppocr/utils/ppocr_keys_v1.txt");//../../ppocr/utils/ppocr_keys_v1.txt
 DEFINE_int32(rec_img_h, 48, "rec image height");
 DEFINE_int32(rec_img_w, 320, "rec image width");
 
