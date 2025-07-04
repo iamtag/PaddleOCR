@@ -27,7 +27,150 @@
 #include <unistd.h>
 #endif
 
+#include <include/json/json.h>
+#include <algorithm>
+#include <iomanip>
+
 namespace PaddleOCR {
+
+std::string Utility::get_application_path() {
+#ifdef _WIN32
+    char buffer[MAX_PATH];
+    GetModuleFileNameA(NULL, buffer, MAX_PATH);
+    std::string path(buffer);
+#else
+    char buffer[PATH_MAX];
+    if (readlink("/proc/self/exe", buffer, sizeof(buffer) - 1) == -1) {
+        std::cerr << "[ERROR] Failed to get application path." << std::endl;
+        return "";
+    }
+    buffer[sizeof(buffer) - 1] = '\0'; // Ensure null-termination
+    std::string path(buffer);
+#endif // _WIN32
+    // Remove the executable name from the path
+    size_t pos = path.find_last_of("/\\");
+    if (pos != std::string::npos) {
+        path = path.substr(0, pos);
+    }
+    return path;
+}
+
+
+bool Utility::is_json_file(const std::string& path) {
+    if (path.length() < 5) return false;
+    std::string lower = path.substr(path.length() - 5);
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    return lower == ".json";
+}
+
+bool Utility::parse_input_json(const std::string& input_json_path, std::vector<cv::String>& cv_all_img_names, std::vector<cv::String>& cv_all_dst_names) {
+    bool ret = false;
+    Json::Reader jsonreader;
+    Json::Value root;
+    std::ifstream in(input_json_path, std::ios::binary);
+
+    if (!in.is_open()) {
+        std::cerr << "[ERROR] Error opening file! image_dir: " << input_json_path << std::endl;
+        exit(1);
+    }
+    if (jsonreader.parse(in, root))
+    {
+        for (unsigned int i = 0; i < root["files"].size(); i++)
+        {
+            std::string src = root["files"][i]["src"].asString();
+            cv_all_img_names.push_back(cv::String(src.c_str()));
+            std::string dst = root["files"][i]["dst"].asString();
+            cv_all_dst_names.push_back(cv::String(dst.c_str()));
+        }
+        ret = true;
+    }
+    in.close();
+    return ret;
+}
+
+std::ostream& Utility::log_with_timestamp(const std::string& msg) {
+    using namespace std::chrono;
+    auto now = system_clock::now();
+    auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
+    std::time_t t = system_clock::to_time_t(now);
+    std::tm tm;
+#if defined(_WIN32)
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    std::cout << "[" << std::setfill('0')
+        << std::setw(2) << tm.tm_hour << ":"
+        << std::setw(2) << tm.tm_min << ":"
+        << std::setw(2) << tm.tm_sec << "."
+        << std::setw(3) << ms.count() << "] "
+        << msg;
+    return std::cout;
+}
+
+std::string& Utility::replace_all(std::string& str, const std::string& old_value, const std::string& new_value)
+{
+    while (true) {
+        std::string::size_type   pos(0);
+        if ((pos = str.find(old_value)) != std::string::npos)
+            str.replace(pos, old_value.length(), new_value);
+        else break;
+    }
+    return str;
+}
+
+std::string Utility::ocr_results_to_string(const std::vector<OCRPredictResult>& ocr_results) {
+    Json::Value root;
+    root["code"] = Json::Value("0");
+    Json::Value results;
+    for (const auto& res : ocr_results) {
+        std::string res_text = res.text;
+        res_text = Utility::replace_all(res_text, "\"", "");
+        if (res.score <= 0.7 || res_text.empty()) {
+            continue; // Skip results with low confidence or empty text
+        }
+
+        Json::Value result;
+        result["text"] = Json::Value(res_text);
+        result["score"] = Json::Value(res.score);
+        // p1, p2, p3, p4 stand for
+        // p1------------p2
+        //  |             |
+        //  |             |
+        // p4------------p3
+        if (res.box.size() == 4) {
+            result["P1"] = Json::Value(std::to_string(res.box[0][0]) + "," + std::to_string(res.box[0][1]));
+            result["P2"] = Json::Value(std::to_string(res.box[1][0]) + "," + std::to_string(res.box[1][1]));
+            result["P3"] = Json::Value(std::to_string(res.box[2][0]) + "," + std::to_string(res.box[2][1]));
+            result["P4"] = Json::Value(std::to_string(res.box[3][0]) + "," + std::to_string(res.box[3][1]));
+
+        }
+        else {
+            result["P1"] = result["P2"] = result["P3"] = result["P4"] = Json::Value("");
+        }
+
+        results.append(result);
+    }
+    root["result"] = Json::Value(results);
+    Json::StyledWriter sw;
+    return sw.write(root);
+}
+
+int Utility::save_result_json(std::vector<OCRPredictResult>& ocr_result, const std::string& filename) {
+    std::string output_json = Utility::ocr_results_to_string(ocr_result);
+    int output_length = output_json.length();
+
+    if (PathExists(filename)) {
+        remove(filename.c_str());
+    }
+    std::ofstream os;
+    os.open(filename, std::ios::out | std::ios::app);
+    if (!os.is_open())
+        std::cerr << "[ERROR] dsts open failed! dst path: " << filename << std::endl;
+    os << output_json;
+    os.close();
+    return output_length;
+}
 
 std::vector<std::string> Utility::ReadDict(const std::string &path) noexcept {
   std::vector<std::string> m_vec;

@@ -56,8 +56,8 @@ PPOCR::PPOCR() noexcept : pri_(new PPOCR_PRIVATE) {
 PPOCR::~PPOCR() { delete this->pri_; }
 
 std::vector<std::vector<OCRPredictResult>>
-PPOCR::ocr(const std::vector<cv::Mat> &img_list, bool det, bool rec,
-           bool cls) noexcept {
+PPOCR::ocr(const std::vector<cv::Mat> &img_list, const std::vector<cv::String>& cv_all_dst_names,
+    bool det, bool rec, bool cls) noexcept {
   std::vector<std::vector<OCRPredictResult>> ocr_results;
 
   if (!det) {
@@ -83,6 +83,7 @@ PPOCR::ocr(const std::vector<cv::Mat> &img_list, bool det, bool rec,
       std::vector<OCRPredictResult> ocr_result =
           this->ocr(img_list[i], true, rec, cls);
       ocr_results.emplace_back(std::move(ocr_result));
+      Utility::save_result_json(ocr_result, cv_all_dst_names[i]);
     }
   }
   return ocr_results;

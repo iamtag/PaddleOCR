@@ -20,6 +20,10 @@
 #include <iostream>
 #include <vector>
 
+#include <include/json/json.h>
+#include <fstream>
+#include <include/socket_utils.h>
+
 using namespace PaddleOCR;
 
 void check_params() {
@@ -80,7 +84,139 @@ void check_params() {
   }
 }
 
-void ocr(std::vector<cv::String> &cv_all_img_names) {
+void ocr_client_handle_one_file(const std::string& img_path, const std::string& dst_json_path) {
+    SocketClient client(8866);
+    client.connect();
+
+    std::string json_string;
+    if (img_path == "EXIT") {
+        json_string = "EXIT";
+    }
+    else {
+        json_string = "{\"img_path\":\"" + img_path + "\", \"dst_json_path\":\"" + dst_json_path + "\"}";
+    }
+    Utility::log_with_timestamp("[INFO] sending image path: ") << img_path << " dst_json_path: " << dst_json_path << std::endl;
+    client.send(json_string);
+    json_string = client.receive();
+    if (json_string.empty()) {
+        std::cerr << "[ERROR] No response from server." << std::endl;
+        return;
+    }
+    Utility::log_with_timestamp("[INFO] ") << json_string << std::endl;
+}
+
+void ocr_client() {
+    std::string image_dir = FLAGS_image_dir;
+    if (Utility::is_json_file(image_dir)) {
+        std::vector<cv::String> cv_all_img_names;
+        std::vector<cv::String> cv_all_dst_names;
+        if (Utility::parse_input_json(image_dir, cv_all_img_names, cv_all_dst_names)) {
+            for (size_t i = 0; i < cv_all_img_names.size(); ++i) {
+                ocr_client_handle_one_file(cv_all_img_names[i], cv_all_dst_names[i]);
+            }
+        }
+    }
+    else {
+        ocr_client_handle_one_file(image_dir, FLAGS_output_json_path);
+    }
+}
+
+void ocr_service() {
+    //通过ocr一个测试样例图片，预加载所需资源
+    std::string test_file = "textline.png";
+    std::string application_path = Utility::get_application_path();
+    if (!application_path.empty()) {
+        std::string model_dir = application_path + "/pplib";
+        if (FLAGS_det_model_dir.empty()) {
+            FLAGS_det_model_dir = model_dir + "/PP-OCRv5_mobile_det_infer";
+        }
+        if (FLAGS_rec_model_dir.empty()) {
+            FLAGS_rec_model_dir = model_dir + "/PP-OCRv5_mobile_rec_infer";
+        }
+#if 0
+        if (FLAGS_cls_model_dir.empty()) {
+            FLAGS_cls_model_dir = model_dir + "/ch_ppocr_cls_infer";
+        }
+#endif
+        if (FLAGS_rec_char_dict_path.empty()) {
+            FLAGS_rec_char_dict_path = model_dir + "/ppocr_keys_v1.txt";
+        }
+        test_file = model_dir + "/" + test_file;
+    }
+    else {
+        std::cerr << "[ERROR] Failed to get application path." << std::endl;
+        return;
+    }
+
+    SocketServer server(8866);
+    server.start();
+    PPOCR ocr = PPOCR();
+    std::string json_string;
+    std::vector<OCRPredictResult> ocr_results;
+    std::string img_path, dst_json_path;
+
+    if (Utility::PathExists(test_file)) {
+        cv::Mat img = cv::imread(test_file, cv::IMREAD_COLOR);
+        if (!img.data) {
+            std::cerr << "[ERROR] test image read failed! image path: "
+                << test_file << std::endl;
+            return;
+        }
+        ocr_results = ocr.ocr(img);
+        Utility::log_with_timestamp("[INFO] pre-load OCR resources with test image: ") << test_file << std::endl;
+    }
+    else {
+        Utility::log_with_timestamp("[WARNING] test image not found, skipping pre-load.") << std::endl;
+    }
+
+    while (true) {
+        Utility::log_with_timestamp("[INFO] waiting for client connection...") << std::endl;
+        json_string = server.receive();
+        if (json_string.empty()) {
+            continue;
+        }
+        if (json_string == "EXIT") {
+            break;
+        }
+
+        Json::Value input_json_value;
+        Json::Reader reader;
+        reader.parse(json_string, input_json_value);
+        img_path = input_json_value["img_path"].asString();
+        dst_json_path = input_json_value["dst_json_path"].asString();
+        Utility::log_with_timestamp("[INFO] received image path: ") << img_path << " dst_json_path: " << dst_json_path << std::endl;
+
+        int output_length = 0;
+        cv::Mat img = cv::imread(img_path, cv::IMREAD_COLOR);
+        if (!img.data) {
+            json_string = "{\"code\": \"1\", \"message\": \"image read failed!\"}";//按标准API返回格式返回
+            std::cerr << "[ERROR] image read failed! image path: "
+                << img_path << std::endl;
+        }
+        else {
+            ocr_results = ocr.ocr(img);
+            if (!dst_json_path.empty()) {
+                output_length = Utility::save_result_json(ocr_results, dst_json_path);
+                if (output_length <= 0) {
+                    json_string = "{\"code\": \"1\", \"message\": \"save result json failed!\"}";
+                    std::cerr << "[ERROR] save result json failed! dst path: "
+                        << dst_json_path << std::endl;
+                }
+                else {
+                    json_string = "{\"code\": \"0\", \"message\": \"success\", \"output_length\": " + std::to_string(output_length) + "}";
+                }
+            }
+            else {
+                json_string = Utility::ocr_results_to_string(ocr_results);
+                output_length = json_string.length();
+            }
+        }
+        server.send(json_string);
+        Utility::log_with_timestamp("[INFO] output_length:") << output_length << std::endl;
+    }
+}
+
+void ocr(std::vector<cv::String> &cv_all_img_names, std::vector<cv::String>& cv_all_dst_names) {
   PPOCR ocr;
 
   if (FLAGS_benchmark) {
@@ -101,7 +237,7 @@ void ocr(std::vector<cv::String> &cv_all_img_names) {
   }
 
   std::vector<std::vector<OCRPredictResult>> ocr_results =
-      ocr.ocr(img_list, FLAGS_det, FLAGS_rec, FLAGS_cls);
+      ocr.ocr(img_list, cv_all_dst_names, FLAGS_det, FLAGS_rec, FLAGS_cls);
 
   for (int i = 0; i < img_names.size(); ++i) {
     std::cout << "predict img: " << cv_all_img_names[i] << std::endl;
@@ -176,6 +312,14 @@ void structure(std::vector<cv::String> &cv_all_img_names) {
 int main(int argc, char **argv) {
   // Parsing command-line
   google::ParseCommandLineFlags(&argc, &argv, true);
+  if (FLAGS_start_server) {
+      ocr_service();
+      return 0;
+  }
+  if (FLAGS_ocr_client) {
+      ocr_client();
+      return 0;
+  }
   check_params();
 
   if (!Utility::PathExists(FLAGS_image_dir)) {
@@ -185,14 +329,14 @@ int main(int argc, char **argv) {
   }
 
   std::vector<cv::String> cv_all_img_names;
-  cv::glob(FLAGS_image_dir, cv_all_img_names);
-  std::cout << "total images num: " << cv_all_img_names.size() << std::endl;
+  std::vector<cv::String> cv_all_dst_names;
+  Utility::parse_input_json(FLAGS_image_dir, cv_all_img_names, cv_all_dst_names);
 
   if (!Utility::PathExists(FLAGS_output)) {
     Utility::CreateDir(FLAGS_output);
   }
   if (FLAGS_type == "ocr") {
-    ocr(cv_all_img_names);
+    ocr(cv_all_img_names, cv_all_dst_names);
   } else if (FLAGS_type == "structure") {
     structure(cv_all_img_names);
   } else {
