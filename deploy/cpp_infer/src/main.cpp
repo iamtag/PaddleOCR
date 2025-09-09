@@ -86,7 +86,7 @@ void check_params() {
   }
 }
 
-void ocr_client_handle_one_file(const std::string& img_path, const std::string& dst_json_path) {
+void ocr_client_handle_one_file(std::string img_path, std::string dst_json_path) {
     SocketClient client(8866);
     client.connect();
 
@@ -95,14 +95,9 @@ void ocr_client_handle_one_file(const std::string& img_path, const std::string& 
         json_string = "EXIT";
     }
     else {
-        // 将路径中的反斜杠替换为正斜杠，确保构造的 JSON 字符串有效
-        std::string processed_img_path = img_path;
-        std::string processed_dst_path = dst_json_path;
-        std::replace(processed_img_path.begin(), processed_img_path.end(), '\\', '/');
-        std::replace(processed_dst_path.begin(), processed_dst_path.end(), '\\', '/');
-
-        // 使用处理后的路径构造 JSON 字符串
-        json_string = "{\"img_path\":\"" + processed_img_path + "\", \"dst_json_path\":\"" + processed_dst_path + "\"}";
+        std::replace(img_path.begin(), img_path.end(), '\\', '/');
+        std::replace(dst_json_path.begin(), dst_json_path.end(), '\\', '/');
+        json_string = "{\"img_path\":\"" + img_path + "\", \"dst_json_path\":\"" + dst_json_path + "\"}";
     }
     Utility::log_with_timestamp("[INFO] sending image path: ") << img_path << " dst_json_path: " << dst_json_path << std::endl;
     client.send(json_string);
