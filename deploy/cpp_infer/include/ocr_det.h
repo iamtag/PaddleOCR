@@ -62,6 +62,18 @@ public:
   void Run(cv::Mat &img, std::vector<std::vector<std::vector<int>>> &boxes,
            std::vector<double> &times);
 
+  uint64_t TryShrinkMemory() {
+    if (predictor_) {
+      return predictor_->TryShrinkMemory();
+    }
+    return 0;
+  }
+  void ClearIntermediateTensor() {
+    if (predictor_) {
+      predictor_->ClearIntermediateTensor();
+    }
+  }
+
 private:
   std::shared_ptr<paddle_infer::Predictor> predictor_;
 

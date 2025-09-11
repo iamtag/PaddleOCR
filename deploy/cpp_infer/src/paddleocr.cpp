@@ -202,13 +202,22 @@ void PPOCR::benchmark_log(int img_num) {
 
 PPOCR::~PPOCR() {
   if (this->detector_ != nullptr) {
+    this->detector_->TryShrinkMemory();
+    this->detector_->ClearIntermediateTensor();
     delete this->detector_;
+    this->detector_ = nullptr;
   }
   if (this->classifier_ != nullptr) {
+    this->classifier_->TryShrinkMemory();
+    this->classifier_->ClearIntermediateTensor();
     delete this->classifier_;
+    this->classifier_ = nullptr;
   }
   if (this->recognizer_ != nullptr) {
+    this->recognizer_->TryShrinkMemory();
+    this->recognizer_->ClearIntermediateTensor();
     delete this->recognizer_;
+    this->recognizer_ = nullptr;
   }
 };
 

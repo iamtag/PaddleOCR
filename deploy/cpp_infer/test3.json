@@ -1,0 +1,12 @@
+{
+"files" : [
+{
+"src":"img\\z1000.jpg",
+"dst":"z1000.json"
+}, 
+{
+"src":"img\\cq.png",
+"dst":"cq.json"
+}
+]
+}

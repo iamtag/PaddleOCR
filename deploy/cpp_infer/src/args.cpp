@@ -32,9 +32,9 @@ DEFINE_string(
 DEFINE_string(det_model_dir, "", "Path of det inference model.");//
 DEFINE_string(limit_type, "max", "limit_type of input image.");
 DEFINE_int32(limit_side_len, 960, "limit_side_len of input image.");
-DEFINE_double(det_db_thresh, 0.4, "Threshold of det_db_thresh.");//0.3
-DEFINE_double(det_db_box_thresh, 0.6, "Threshold of det_db_box_thresh.");
-DEFINE_double(det_db_unclip_ratio, 1.5, "Threshold of det_db_unclip_ratio.");
+DEFINE_double(det_db_thresh, 0.3, "Threshold of det_db_thresh.");//0.3
+DEFINE_double(det_db_box_thresh, 0.4, "Threshold of det_db_box_thresh.");
+DEFINE_double(det_db_unclip_ratio, 1.6, "Threshold of det_db_unclip_ratio.");
 DEFINE_bool(use_dilation, false, "Whether use the dilation on output map.");
 DEFINE_string(det_db_score_mode, "slow", "Whether use polygon score.");
 DEFINE_bool(visualize, false, "Whether show the detection results.");//true

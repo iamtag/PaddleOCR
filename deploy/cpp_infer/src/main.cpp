@@ -26,6 +26,7 @@
 #include <algorithm> // 添加这行来包含 std::replace
 #include <include/socket_utils.h>
 
+#include <Windows.h>
 using namespace PaddleOCR;
 
 void check_params() {
@@ -93,8 +94,9 @@ void ocr_client_handle_one_file(std::string img_path, std::string dst_json_path)
     std::string json_string;
     if (img_path == "EXIT") {
         json_string = "EXIT";
-    }
-    else {
+    } else if (img_path == "RESET") {
+        json_string = "RESET";
+    } else {
         std::replace(img_path.begin(), img_path.end(), '\\', '/');
         std::replace(dst_json_path.begin(), dst_json_path.end(), '\\', '/');
         json_string = "{\"img_path\":\"" + img_path + "\", \"dst_json_path\":\"" + dst_json_path + "\"}";
@@ -123,6 +125,22 @@ void ocr_client() {
     else {
         ocr_client_handle_one_file(image_dir, FLAGS_output_json_path);
     }
+}
+
+void _preload_ocr(PPOCR &ocr, std::string &test_file) {
+  if (Utility::PathExists(test_file)) {
+	  cv::Mat img = cv::imread(test_file, cv::IMREAD_COLOR);
+	  if (!img.data) {
+		  std::cerr << "[ERROR] test image read failed! image path: "
+			  << test_file << std::endl;
+		  return;
+	  }
+	  ocr.ocr(img);
+	  Utility::log_with_timestamp("[INFO] pre-load OCR resources with test image: ") << test_file << std::endl;
+  }
+  else {
+	  Utility::log_with_timestamp("[WARNING] test image not found, skipping pre-load.") << std::endl;
+  }
 }
 
 void ocr_service() {
@@ -180,6 +198,15 @@ void ocr_service() {
     if (json_string == "EXIT") {
       break;
     }
+    if (json_string == "RESET") {
+      Utility::log_with_timestamp("[INFO] Resetting OCR service...") << std::endl;
+      ocr.~PPOCR();
+      SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
+	  new(&ocr) PPOCR();
+      _preload_ocr(ocr, test_file);
+      server.send("{\"code\": \"0\", \"message\": \"service reset success\"}");
+      continue;
+    }
 
     Json::Value input_json_value;
     Json::Reader reader;
@@ -195,7 +222,26 @@ void ocr_service() {
       std::cerr << "[ERROR] image read failed! image path: "
                 << img_path << std::endl;
     } else {
-      ocr_results = ocr.ocr(img);
+      try {
+        ocr_results = ocr.ocr(img);
+      } catch (const std::exception& e) {
+        Utility::log_with_timestamp("[ERROR] OCR processing failed: ") << e.what() << std::endl;
+        Utility::log_with_timestamp("[INFO] Resetting OCR resources and retrying...") << std::endl;
+        
+        // 重置OCR资源
+        ocr.~PPOCR();
+        new(&ocr) PPOCR();
+        _preload_ocr(ocr, test_file);
+        try {
+          ocr_results = ocr.ocr(img);
+          Utility::log_with_timestamp("[INFO] OCR processing succeeded after retry") << std::endl;
+        } catch (...) {
+          json_string = "{\"code\": \"1\", \"message\": \"OCR processing failed after retry\"}";
+          Utility::log_with_timestamp("[ERROR] OCR processing failed after retry") << std::endl;
+          server.send(json_string);
+          continue;
+        }
+      }
       if (!dst_json_path.empty()) {
         output_length = Utility::save_result_json(ocr_results, dst_json_path);
 		if (output_length <= 0) {
@@ -311,6 +357,7 @@ void structure(std::vector<cv::String> &cv_all_img_names) {
 }
 
 int main(int argc, char **argv) {
+    //_putenv_s("FLAGS_allocator_strategy", "naive_best_fit");
   // Parsing command-line
   google::ParseCommandLineFlags(&argc, &argv, true);
   if (FLAGS_start_server) {
