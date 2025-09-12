@@ -27,6 +27,7 @@
 #include <include/socket_utils.h>
 
 #include <Windows.h>
+
 using namespace PaddleOCR;
 
 void check_params() {
@@ -88,20 +89,28 @@ void check_params() {
 }
 
 void ocr_client_handle_one_file(std::string img_path, std::string dst_json_path) {
-    SocketClient client(8866);
-    client.connect();
-
     std::string json_string;
     if (img_path == "EXIT") {
         json_string = "EXIT";
-    } else if (img_path == "RESET") {
+    }
+    else if (img_path == "RESET") {
         json_string = "RESET";
-    } else {
+    }
+	else if (img_path == "RESET_MKL") {
+        Utility::log_with_timestamp("[INFO] close mkl...") << json_string << std::endl;
+		ocr_client_handle_one_file("RESET", "");
+        Utility::log_with_timestamp("[INFO] open mkl...") << json_string << std::endl;
+        ocr_client_handle_one_file("RESET", "");
+        return;
+    } 
+    else {
         std::replace(img_path.begin(), img_path.end(), '\\', '/');
         std::replace(dst_json_path.begin(), dst_json_path.end(), '\\', '/');
         json_string = "{\"img_path\":\"" + img_path + "\", \"dst_json_path\":\"" + dst_json_path + "\"}";
     }
-    Utility::log_with_timestamp("[INFO] sending image path: ") << img_path << " dst_json_path: " << dst_json_path << std::endl;
+    Utility::log_with_timestamp("[INFO] sending string: ") << json_string << std::endl;
+    SocketClient client(8866);
+    client.connect();
     client.send(json_string);
     json_string = client.receive();
     if (json_string.empty()) {
@@ -129,85 +138,95 @@ void ocr_client() {
 
 void _preload_ocr(PPOCR &ocr, std::string &test_file) {
   if (Utility::PathExists(test_file)) {
-	  cv::Mat img = cv::imread(test_file, cv::IMREAD_COLOR);
-	  if (!img.data) {
-		  std::cerr << "[ERROR] test image read failed! image path: "
-			  << test_file << std::endl;
-		  return;
-	  }
-	  ocr.ocr(img);
-	  Utility::log_with_timestamp("[INFO] pre-load OCR resources with test image: ") << test_file << std::endl;
+    cv::Mat img = cv::imread(test_file, cv::IMREAD_COLOR);
+    if (!img.data) {
+      std::cerr << "[ERROR] test image read failed! image path: "
+        << test_file << std::endl;
+      return;
+    }
+    ocr.ocr(img);
+    Utility::log_with_timestamp("[INFO] pre-load OCR resources with test image: ") << test_file << std::endl;
   }
   else {
-	  Utility::log_with_timestamp("[WARNING] test image not found, skipping pre-load.") << std::endl;
+    Utility::log_with_timestamp("[WARNING] test image not found, skipping pre-load.") << std::endl;
   }
 }
-
+bool g_enable_mkldnn = true;
+PPOCR* _reset_mkldnn(PPOCR *ocr, std::string test_file, bool flag) {
+    delete ocr;
+    SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
+    g_enable_mkldnn = flag;
+    PPOCR*ret = new PPOCR();
+    _preload_ocr(*ret, test_file);
+    return ret;
+}
 void ocr_service() {
   //通过ocr一个测试样例图片，预加载所需资源
   std::string test_file = "textline.png";
   std::string application_path = Utility::get_application_path();
   if (!application_path.empty()) {
-	  std::string model_dir = application_path + "/pplib";
-	  if (FLAGS_det_model_dir.empty()) {
-		  FLAGS_det_model_dir = model_dir + "/ch_ppocr_det_infer";
-	  }
-	  if (FLAGS_rec_model_dir.empty()) {
-		  FLAGS_rec_model_dir = model_dir + "/ch_ppocr_rec_infer";
-	  }
-	  if (FLAGS_cls_model_dir.empty()) {
-		  FLAGS_cls_model_dir = model_dir + "/ch_ppocr_cls_infer";
-	  }
-	  if (FLAGS_rec_char_dict_path.empty()) {
-          FLAGS_rec_char_dict_path = model_dir + "/ppocr_keys_v1.txt";
-	  }
-	  test_file = model_dir + "/" + test_file;
+    std::string model_dir = application_path + "/pplib";
+    if (FLAGS_det_model_dir.empty()) {
+      FLAGS_det_model_dir = model_dir + "/ch_ppocr_det_infer";
+    }
+    if (FLAGS_rec_model_dir.empty()) {
+      FLAGS_rec_model_dir = model_dir + "/ch_ppocr_rec_infer";
+    }
+    if (FLAGS_cls_model_dir.empty()) {
+      FLAGS_cls_model_dir = model_dir + "/ch_ppocr_cls_infer";
+    }
+    if (FLAGS_rec_char_dict_path.empty()) {
+      FLAGS_rec_char_dict_path = model_dir + "/ppocr_keys_v1.txt";
+    }
+    test_file = model_dir + "/" + test_file;
   }
   else {
-	  std::cerr << "[ERROR] Failed to get application path." << std::endl;
-	  return;
+    std::cerr << "[ERROR] Failed to get application path." << std::endl;
+    return;
   }
 
   SocketServer server(8866);
   server.start();
-  PPOCR ocr = PPOCR();
+  PPOCR* ocr = new PPOCR();
   std::string json_string;
   std::vector<OCRPredictResult> ocr_results;
   std::string img_path, dst_json_path;
 
-  if (Utility::PathExists(test_file)) {
-	  cv::Mat img = cv::imread(test_file, cv::IMREAD_COLOR);
-	  if (!img.data) {
-		  std::cerr << "[ERROR] test image read failed! image path: "
-			  << test_file << std::endl;
-		  return;
-	  }
-	  ocr_results = ocr.ocr(img);
-	  Utility::log_with_timestamp("[INFO] pre-load OCR resources with test image: ") << test_file << std::endl;
-  }
-  else {
-	  Utility::log_with_timestamp("[WARNING] test image not found, skipping pre-load.") << std::endl;
-  }
+  _preload_ocr(*ocr, test_file);
 
   while (true) {
-	  Utility::log_with_timestamp("[INFO] waiting for client connection...") << std::endl;
+    Utility::log_with_timestamp("[INFO] waiting for client connection...") << std::endl;
     json_string = server.receive();
     if (json_string.empty()) {
       continue;
     }
+    Utility::log_with_timestamp("[INFO] json_string:") << json_string << std::endl;
     if (json_string == "EXIT") {
       break;
     }
+    if (json_string == "RESET_MKL") {
+        Utility::log_with_timestamp("[INFO] RESET_MKL...") << std::endl;
+		PPOCR* net_ocr = _reset_mkldnn(ocr, test_file, false);
+
+		Sleep(2000); // 等待2秒，确保内存释放完成
+
+		ocr = _reset_mkldnn(net_ocr, test_file, true);
+        server.send("{\"code\": \"0\", \"message\": \"service reset success\"}");
+        continue;
+    }
     if (json_string == "RESET") {
       Utility::log_with_timestamp("[INFO] Resetting OCR service...") << std::endl;
-      ocr.~PPOCR();
+      // 修改为指针的释放和重新创建
+      delete ocr;
       SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
-	  new(&ocr) PPOCR();
-      _preload_ocr(ocr, test_file);
+      g_enable_mkldnn = !g_enable_mkldnn;
+      
+      ocr = new PPOCR();
+      // 修改_preload_ocr函数调用，传递指针
+      _preload_ocr(*ocr, test_file);
       server.send("{\"code\": \"0\", \"message\": \"service reset success\"}");
       continue;
     }
-
     Json::Value input_json_value;
     Json::Reader reader;
     reader.parse(json_string, input_json_value);
@@ -223,17 +242,17 @@ void ocr_service() {
                 << img_path << std::endl;
     } else {
       try {
-        ocr_results = ocr.ocr(img);
+        ocr_results = ocr->ocr(img);
       } catch (const std::exception& e) {
         Utility::log_with_timestamp("[ERROR] OCR processing failed: ") << e.what() << std::endl;
         Utility::log_with_timestamp("[INFO] Resetting OCR resources and retrying...") << std::endl;
         
-        // 重置OCR资源
-        ocr.~PPOCR();
-        new(&ocr) PPOCR();
-        _preload_ocr(ocr, test_file);
+        // 修改为指针的释放和重新创建
+        delete ocr;
+        ocr = new PPOCR();
+        _preload_ocr(*ocr, test_file);
         try {
-          ocr_results = ocr.ocr(img);
+          ocr_results = ocr->ocr(img);
           Utility::log_with_timestamp("[INFO] OCR processing succeeded after retry") << std::endl;
         } catch (...) {
           json_string = "{\"code\": \"1\", \"message\": \"OCR processing failed after retry\"}";
@@ -244,14 +263,14 @@ void ocr_service() {
       }
       if (!dst_json_path.empty()) {
         output_length = Utility::save_result_json(ocr_results, dst_json_path);
-		if (output_length <= 0) {
-			json_string = "{\"code\": \"1\", \"message\": \"save result json failed!\"}";
-			std::cerr << "[ERROR] save result json failed! dst path: "
-				<< dst_json_path << std::endl;
-		}
-		else {
-			json_string = "{\"code\": \"0\", \"message\": \"success\", \"output_length\": " + std::to_string(output_length) + "}";
-		}
+        if (output_length <= 0) {
+          json_string = "{\"code\": \"1\", \"message\": \"save result json failed!\"}";
+          std::cerr << "[ERROR] save result json failed! dst path: "
+            << dst_json_path << std::endl;
+        }
+        else {
+          json_string = "{\"code\": \"0\", \"message\": \"success\", \"output_length\": " + std::to_string(output_length) + "}";
+        }
       }
       else {
         json_string = Utility::ocr_results_to_string(ocr_results);
@@ -260,6 +279,10 @@ void ocr_service() {
     }
     server.send(json_string);
     Utility::log_with_timestamp("[INFO] output_length:") << output_length << std::endl;
+  }
+  
+  if (ocr) {
+    delete ocr;
   }
 }
 

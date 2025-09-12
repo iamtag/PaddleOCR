@@ -40,11 +40,16 @@ void DBDetector::LoadModel(const std::string &model_dir) {
       }
     }
   } else {
+    extern bool g_enable_mkldnn;
     config.DisableGpu();
-    if (this->use_mkldnn_) {
+    if (this->use_mkldnn_ && g_enable_mkldnn) {
       config.EnableMKLDNN();
       // cache 10 different shapes for mkldnn to avoid memory leak
       config.SetMkldnnCacheCapacity(10);
+      Utility::log_with_timestamp("[DBG] ocr_det:EnableMKLDNN...") << std::endl;
+    } else {
+      config.DisableMKLDNN();
+      Utility::log_with_timestamp("[DBG] ocr_det:DisableMKLDNN...") << std::endl;
     }
     config.SetCpuMathLibraryNumThreads(this->cpu_math_library_num_threads_);
   }
